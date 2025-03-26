@@ -8,4 +8,6 @@ RUN pip install -r requirements.txt
 
 COPY . .
 
+ENV PYTHONPATH=/app
+
 CMD ["python", "fetch_alerts.py"]

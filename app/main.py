@@ -4,7 +4,7 @@
 import logging
 import schedule
 import time
-from app.gmail_client import GmailClient
+from app.gmail_client import GoogleAlertClient
 
 # 로깅 설정
 logging.basicConfig(
@@ -17,7 +17,7 @@ def main():
     """메인 함수"""
     logger.info("Google Alert API 시작")
     # Gamil 클라이언트와 저장소 초기화
-    gmail_client = GmailClient()
+    gmail_client = GoogleAlertClient()
     
     # 저장소 초기화
     # storage = AlertStorage()
