@@ -5,6 +5,8 @@ import base64
 from datetime import datetime
 from typing import List,Dict,Any,Optional
 from bs4 import BeautifulSoup
+import urllib.parse
+
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
@@ -106,31 +108,28 @@ class GoogleAlertClient:
             if not body:
                 logger.warning(f"메시지 {msg_id}에서 본문을 추출할 수 없습니다.")
                 return None
+
+            alert_items = self._parse_alert_html(body)
+            
+            return {
+                'id':msg_id,
+                'items':alert_items
+            }
+            
         except Exception as e:
-            logger.error(f"이메일을 처리 중 오류 발생: {e}")
-            return []
-    # TODO 파일 어떤식으로 받아와서 파싱 할지 결정
-        #     alert_items = self._parse_alert_html(body)
-            
-        #     return {
-        #         'id':msg_id,
-        #         'items':alert_items
-        #     }
-            
-        # except Exception as e:
-        #     logger.error(f"메시지 {msg_id} 처리 중 오류 발생: {e}")
-        #     return None
+            logger.error(f"메시지 {msg_id} 처리 중 오류 발생: {e}")
+            return None
         
-        def _get_message_body(self, message: Dict[str, Any]) -> Optional[str]:
-            """
-            이메일 메시지에서 HTML 본문 추출
+    def _get_message_body(self, message: Dict[str, Any]) -> Optional[str]:
+        """
+        이메일 메시지에서 HTML 본문 추출
 
-            Args:
-                message : 이메일 메시지 객체
+        Args:
+            message : 이메일 메시지 객체
 
-            Returns:
-                HTML 본문 또는 None
-            """
+        Returns:
+            HTML 본문 또는 None
+        """
         parts = [message['payload']]
         
         while parts:
@@ -142,4 +141,41 @@ class GoogleAlertClient:
             if 'body' in part and 'data' in part['body']:
                 mime_type = part.get('mimeType')
                 if mime_type =='text/html':
-                    return 
+                    return base64.urlsafe_b64decode(part['body']['data']).decode('utf-8')
+        return None
+
+    def _parse_alert_html(self, html: str) -> List[Dict[str,str]]:
+        """
+        알림 HTML을 파싱하여 항목을 추출합니다.
+
+        Args:
+            html (str): HTML 문자열
+
+        Returns:
+            추출된 알림 항목목록
+        """
+        soup = BeautifulSoup(html, 'html.parser')
+        
+        table = soup.find('table', style="border-collapse:collapse;border-left:1px solid #e4e4e4;border-right:1px solid #e4e4e4")
+        
+        if table:
+            links = []
+            # <tr> 태그 순회
+            for tr in table.find_all('tr'):
+                # <a> 태그 찾기
+                a_tag = tr.find('a')
+                if a_tag:
+                    # <a> 태그 안에 이미지가 있는지 확인
+                    img_tag = tr.find('img')
+                    if img_tag:
+                        # 이미지와 텍스트가 같은 링크를 제외
+                        if img_tag['src'] in a_tag.get_text():
+                            continue  # 이미지와 텍스트가 같으면 제외
+                    links.append(a_tag['href'])
+                    
+            #TODO 반환 구조를 설정한 알리미 태그도 함께 넘겨줘야 정리할 때 유용할 것같음
+            for idx,link in enumerate(links):
+                parsed_link = urllib.parse.parse_qs(urllib.parse.urlparse(link).query)
+                real_link = parsed_link.get('url', [None])[0]
+                links[idx] = real_link
+        
