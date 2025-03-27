@@ -79,7 +79,7 @@ class GoogleAlertClient:
             logger.error(f"이메일을 가져오는 중 오류 발생: {e}")
             return []
         # TODO 받아온 메시지 파싱해서 필요 부분만 저장하기
-    def _process_message(self, msg_id: str) -> Optioanl[Dict[str, Any]]:
+    def _process_message(self, msg_id: str) -> Optional[Dict[str, Any]]:
         """
         이메일 메시지 처리
         
@@ -102,12 +102,14 @@ class GoogleAlertClient:
             # 날짜도 필요 없을듯
             
             # 본문 추출
-            body = self.get._get_message_body(message)
+            body = self._get_message_body(message)
             if not body:
                 logger.warning(f"메시지 {msg_id}에서 본문을 추출할 수 없습니다.")
                 return None
-
-            # TODO 파일 어떤식으로 받아와서 파싱 할지 결정
+        except Exception as e:
+            logger.error(f"이메일을 처리 중 오류 발생: {e}")
+            return []
+    # TODO 파일 어떤식으로 받아와서 파싱 할지 결정
         #     alert_items = self._parse_alert_html(body)
             
         #     return {
@@ -119,20 +121,25 @@ class GoogleAlertClient:
         #     logger.error(f"메시지 {msg_id} 처리 중 오류 발생: {e}")
         #     return None
         
-        # def _get_message_body(self, message: Dict[str, Any]) -> Optional[str]:
-        #     """
-        #     이메일 메시지에서 HTML 본문 추출
+        def _get_message_body(self, message: Dict[str, Any]) -> Optional[str]:
+            """
+            이메일 메시지에서 HTML 본문 추출
 
-        #     Args:
-        #         message : 이메일 메시지 객체
+            Args:
+                message : 이메일 메시지 객체
 
-        #     Returns:
-        #         HTML 본문 또는 None
-        #     """
-        # parts = [message['payload']]
+            Returns:
+                HTML 본문 또는 None
+            """
+        parts = [message['payload']]
         
-        # while parts:
-        #     part = parts.pop(0)
+        while parts:
+            part = parts.pop(0)
             
-        #     if 'parts' in part:
-        #         parts.extend(part['parts'])
+            if 'parts' in part:
+                parts.extend(part['parts'])
+            
+            if 'body' in part and 'data' in part['body']:
+                mime_type = part.get('mimeType')
+                if mime_type =='text/html':
+                    return 
