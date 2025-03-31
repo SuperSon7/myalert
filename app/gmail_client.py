@@ -16,10 +16,12 @@ from googleapiclient.discovery import build
 from app.config import CREDENTIALS_FILE, TOKEN_FILE, SCOPES, ALERTS_QUERY
 
 
+import traceback
+
 logger = logging.getLogger(__name__)
 class GoogleAlertClient:
     def __init__(self):
-        self._service = self._get_gmail_service()
+        self._service = self.get_gmail_service()
 
     def get_gmail_service(self):    
         """Gmail Api 서비스객체 반환"""
@@ -56,7 +58,7 @@ class GoogleAlertClient:
         date_str = datetime.now().strftime("%Y/%m/%d")
         
         try:
-            results = self._service.user().message().list(
+            results = self._service.users().messages().list(
                 userId='me',
                 q=f"{ALERTS_QUERY}{date_str}",
                 maxResults=max_results
@@ -80,6 +82,7 @@ class GoogleAlertClient:
         except Exception as e:
             logger.error(f"이메일을 가져오는 중 오류 발생: {e}")
             return []
+        
         # TODO 받아온 메시지 파싱해서 필요 부분만 저장하기
     def _process_message(self, msg_id: str) -> Optional[Dict[str, Any]]:
         """
@@ -110,7 +113,7 @@ class GoogleAlertClient:
                 return None
 
             alert_items = self._parse_alert_html(body)
-            
+            # print(alert_items)
             return {
                 'id':msg_id,
                 'items':alert_items
@@ -154,28 +157,43 @@ class GoogleAlertClient:
         Returns:
             추출된 알림 항목목록
         """
-        soup = BeautifulSoup(html, 'html.parser')
-        
-        table = soup.find('table', style="border-collapse:collapse;border-left:1px solid #e4e4e4;border-right:1px solid #e4e4e4")
-        
-        if table:
-            links = []
-            # <tr> 태그 순회
-            for tr in table.find_all('tr'):
-                # <a> 태그 찾기
-                a_tag = tr.find('a')
-                if a_tag:
-                    # <a> 태그 안에 이미지가 있는지 확인
-                    img_tag = tr.find('img')
-                    if img_tag:
-                        # 이미지와 텍스트가 같은 링크를 제외
-                        if img_tag['src'] in a_tag.get_text():
-                            continue  # 이미지와 텍스트가 같으면 제외
-                    links.append(a_tag['href'])
+        try:
+            soup = BeautifulSoup(html, 'html.parser')
+            valid_links = []
+            tables = soup.find_all('table', style="border-collapse:collapse;border-left:1px solid #e4e4e4;border-right:1px solid #e4e4e4")
+            # print(tables)
+            for table in tables:
+                links = []
+                # <tr> 태그 순회
+                for idx, tr in enumerate(table.find_all('tr')):
                     
-            #TODO 반환 구조를 설정한 알리미 태그도 함께 넘겨줘야 정리할 때 유용할 것같음
-            for idx,link in enumerate(links):
-                parsed_link = urllib.parse.parse_qs(urllib.parse.urlparse(link).query)
-                real_link = parsed_link.get('url', [None])[0]
-                links[idx] = real_link
-        
+                    tds = tr.select('td[style*="font-family:Arial"]') # css 선택자 이용, 첫 번째 링크랑 다른링크들이랑 차이 약간 있어서 전부 때려넣으면 오류
+
+                    for td in tds:
+                    # <a> 태그 찾기
+                        a_tags = td.find_all('a', href=True) # 그냥 a만 찾으면 빈 a 있어서 그거 반환함
+                        for a_tag in a_tags:
+                            # <a> 태그 안에 이미지가 있는지 확인
+                            img_tag = td.find('img')
+                            if img_tag:
+                                # 이미지와 텍스트가 같은 링크를 제외
+                                if img_tag['src'] in a_tag.get_text():
+                                    continue  # 이미지와 텍스트가 같으면 제외
+
+                            links.append(a_tag['href'])
+                            
+                #TODO 반환 구조를 설정한 알리미 태그도 함께 넘겨줘야 정리할 때 유용할 것같음
+                for idx,link in enumerate(links):
+
+                    parsed_link = urllib.parse.parse_qs(urllib.parse.urlparse(link).query)
+
+                    real_link = parsed_link.get('url', [None])[0]
+                    
+                    if real_link is None : 
+                        continue
+                    valid_links.append(real_link)
+                    
+        except Exception as e:
+            error_message = traceback.format_exc()
+            logger.error(f"fetch 처리 중 오류 발생: {error_message}")
+        return valid_links
